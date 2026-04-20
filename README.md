@@ -42,15 +42,14 @@ The analysis was developed in **R Markdown** and relies on the following main pa
 ```bash
 .
 ├── README.md
-├── flor-yeast-rnaseq-visualization.Rmd
+├── flor_yeast_rnaseq_visualization.Rmd
+├── flor_yeast_rnaseq_visualization.html
 ├── data/
 │   ├── rep1.csv
 │   ├── rep2.csv
 │   ├── rep3.csv
 │   └── rep4.csv
 ├── figures/
-└── output/
-│   ├── flor-yeast-rnaseq-visualization.html
 ```
 
 ## How to run
