@@ -1,0 +1,2073 @@
+---
+title: "**Wine production – RNAseq of the Flor yeast<br><font color='#F48225' size='5'>Data visualization (Course 2024/2025)**</font>"
+author: "<font color='#A8A8A8' size='3'>Eira Fontanals Muñoz, Òscar Contreras Parejo & Marc J. Torres Valero</font>"
+date: "<font color='#A8A8A8' size='3'>May 2025</font>"
+output:
+  html_document:
+    css: https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/all.css
+    theme: yeti
+    self_contained: yes
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    number_sections: true
+    anchor_sections: true
+    collapsed: false
+    smooth_scroll: false
+    code_folding: hide
+---
+
+```{r setup, echo=TRUE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width = 6, fig.height = 4, fig.align = "center")
+
+# Load required libraries
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(tibble) 
+library(RColorBrewer)
+library(ggfortify)
+library(factoextra)
+library(ggplot2)
+library(Rtsne)
+library(umap)
+library(patchwork)
+library(htmltools)
+```
+
+```{=html}
+<style>
+  .fig {width: 50%}
+  @import url(https://fonts.googleapis.com/css?family=Fira+Sans:300,300i,400,400i,500,500i,700,700i);
+  @import url(https://cdn.rawgit.com/tonsky/FiraCode/1.204/distr/fira_code.css);
+
+.center {
+  text-align: center;
+}
+
+.code_box {
+  padding: 1em 1em 1em 1em;
+  background: white;
+  color: #222222;
+  border: 2px solid #222222;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+.alternative_box {
+  padding: 1em;
+  background: white;
+  color: red4;
+  border: 2px solid red;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+.question_box {
+  padding: 1em;
+  background: white;
+  color: red4;
+  border: 2px solid blue;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: bold;
+}
+.tocify-header {
+  font-weight: bold !important;
+}
+
+</style>
+```
+
+# Introduction
+
+::: {.code_box data-latex=""}
+This project explores the **genetic and transcriptional differences** between two industrial strains of Saccharomyces cerevisiae, **flor yeasts**, used in the production of distinct types of **sherry wine**. These specialized yeast strains form a **velum** on the surface of fortified wine, a key adaptation that allows them to **survive harsh winemaking** conditions and contributes to the **unique biochemical and oxidative changes** responsible for sherry's distinctive **flavor profile**.
+
+A leading sherry wine producer, crafting two products (**Wine A** and **Wine B**) that differ in **flavor**, **alcohol content**, and **color**, seeks to understand whether these sensory variations are driven by **genetic differences** in the yeast or by **uncontrolled biochemical processes**.
+
+To investigate this, **RNA sequencing (RNA-seq)** was performed on the two flor yeast strains across six **stages of velum development**, with **four replicates per time point**, totaling **48 samples**. Data processing included **quality control**, **trimming**, and **filtering** using a standardized **RNA-seq pipeline**. One sample showed atypical results during quality assessment and may need to be excluded after normalization.
+
+**Gene expression** was quantified using **Hisat2** and **featureCounts**, generating a **gene count matrix** for each replicate. **Sample metadata** is embedded in the file names provided.
+
+The objective is to apply **dimensionality reduction techniques** such as **Principal Component Analysis (PCA)** and **t-Distributed Stochastic Neighbor Embedding (t-SNE)** to determine whether **transcriptomic patterns** reveal underlying **genetic distinctions** between the yeast strains---and whether these could be linked to **differences in the final wine characteristics**.
+:::
+
+# Load, adapt the data and create metadata
+
+```{r message=FALSE, cache=TRUE}
+# --------------------------
+## [#1] Read the data
+# --------------------------
+## Read data into separate variables
+rep1_data <- read.csv("data/rep1.csv", header = TRUE, row.names = 1, sep=",")
+rep2_data <- read.csv("data/rep2.csv", header = TRUE, row.names = 1, sep=",")
+rep3_data <- read.csv("data/rep3.csv", header = TRUE, row.names = 1, sep=",")
+rep4_data <- read.csv("data/rep4.csv", header = TRUE, row.names = 1, sep=",")
+```
+
+::: {.code_box data-latex="" style="border: 2px solid #FF0000; color: #000000;"}
+**ALTERNATIVE CODE:** Read/Import the data by using `read.delim()`
+
+```{r, include=TRUE, cache=TRUE}
+# Read replicate 1 
+replicate_1 <- read.delim("data/rep1.csv", sep=",")  # Read the data
+rownames(replicate_1) <- replicate_1$X  # Assign 'gene' column as row names
+replicate_1$X <- NULL  # Remove 'gene' column
+
+# Read replicate 2
+replicate_2 <- read.delim("data/rep2.csv", sep=",")  
+rownames(replicate_2) <- replicate_2$X  
+replicate_2$X <- NULL  
+
+# Read replicate 3
+replicate_3 <- read.delim("data/rep3.csv", sep=",")  
+rownames(replicate_3) <- replicate_3$X  
+replicate_3$X <- NULL  
+
+# Read replicate 4 
+replicate_4 <- read.delim("data/rep4.csv", sep=",")
+rownames(replicate_4) <- replicate_4$X
+replicate_4$X <- NULL
+```
+:::
+
+## Check the data
+
+Once loaded into R, check if the data matches what is expected and take a brief view of the data.
+
+```{r results, include=TRUE, cache=TRUE}
+# Print a small head of the data
+cat("Small head of Replicate 1:")
+head(rep1_data[1:3])
+cat("Small head of Replicate 2:")
+head(rep2_data[1:3])
+cat("Small head of Replicate 3:")
+head(rep3_data[1:3])
+cat("Small head of Replicate 4:")
+head(rep4_data[1:3])
+
+# See dimensions for each replicate
+cat("Replicate 1 dimensions:",(dim(rep1_data)), "\n")
+cat("Replicate 2 dimensions:",(dim(rep2_data)), "\n")
+cat("Replicate 3 dimensions:",(dim(rep3_data)), "\n")
+cat("Replicate 4 dimensions:",(dim(rep4_data)), "\n")
+
+# Check if any duplicated column names
+cat("Duplicated columns in rep1_data:",any(duplicated(colnames(rep1_data))),"\n")
+cat("Duplicated columns in rep2_data:",any(duplicated(colnames(rep2_data))),"\n")
+cat("Duplicated columns in rep3_data:",any(duplicated(colnames(rep3_data))),"\n")
+cat("Duplicated columns in rep4_data:",any(duplicated(colnames(rep4_data))),"\n")
+```
+
+All four replicate datasets have the same dimensions, indicating they contain the same genes and time points, with differences only in expression values. To prevent issues in further analysis, each dataset was also checked for duplicated column names to ensure there are no naming conflicts or potential sources of bias.
+
+## Adapt the data
+
+```{r, cache=TRUE}
+# Transpose all reps
+X1 <- t(rep1_data)
+X2 <- t(rep2_data)
+X3 <- t(rep3_data)
+X4 <- t(rep4_data)
+
+# Combine them into a single data frame
+X <- rbind(X1, X2, X3, X4)
+
+# Since we have transposed and joined all the data, check if we have 48 rows and 7126 columns.
+cat("The resulting dataset X has", dim(X)[1], "rows and", dim(X)[2], "columns as we expected.")
+
+# Check if columns represent variables (genes) and rows samples.
+str(X)
+
+```
+
+Values from 1 to 48 which are rows are represented as samples/replicates (e.g. 'A.t1_rep1') and values from 1 to 7126 that are columns are representes as genes (e.g. YDL248W). Given the results we can say that the data has been adapted accordingly as we have expected.
+
+## Get metadata associated
+
+```{r, include=TRUE, cache=TRUE}
+#Get row names
+sample_ids <- row.names(X)
+
+# Parse ID into structured data
+meta_data <- strcapture(
+  pattern = "^([^.]+)[._]t(\\d+)[._]rep(\\d+)$",
+  x = sample_ids,
+  proto = data.frame(
+    experiment = character(),
+    time = integer(),
+    replicate = integer()
+  )
+)
+
+# Add ID as a column
+row.names(meta_data) <- sample_ids
+# Preview
+head(meta_data)
+```
+
+::: {.code_box data-latex="" style="border: 2px solid #FF0000; color: #000000;"}
+**ALTERNATIVE CODE:** Get metadata associated by using `tidyr::separate()`
+
+```{r, include=TRUE, cache=TRUE}
+# Get row names
+sample_ids <- row.names(X)
+
+# Turn into tibble and separate components
+meta_data <- tibble(sample_ids = sample_ids) %>%
+  separate(sample_ids, into = c("experiment", "time_rep"), sep = "\\.", remove = FALSE) %>%
+  separate(time_rep, into = c("time", "replicate"), sep = "_", remove = TRUE) %>%
+  mutate(
+    time = as.integer(sub("t", "", time)),
+    replicate = as.integer(sub("rep", "", replicate))
+  ) %>%
+  column_to_rownames("sample_ids")  # Set row names
+```
+:::
+
+# PCA representation
+
+::: {.code_box data-latex=""}
+**Principal Component Analysis (PCA)** is a **linear dimensionality reduction method** that transforms high-dimensional data into a lower-dimensional space by identifying **principal components**, which are the directions along which the data varies the most. Renowned for its simplicity, speed, and ease of interpretation, PCA is particularly valuable in exploratory data analysis and machine learning. As a **deterministic technique**, it consistently yields the same results when applied to the same data.
+:::
+
+## PCA - Not Scaled {.tabset}
+
+```{r, cache=TRUE}
+# Apply PCA projection without any data transformation
+pca_not_scaled = stats::prcomp(X, scale=FALSE, center=TRUE)
+
+# Treat data as factor
+meta_data$experiment <- as.factor(meta_data$experiment)
+meta_data$time <- as.factor(meta_data$time)
+meta_data$replicate <- as.factor(meta_data$replicate)
+```
+
+### Color according to Wine Type {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(pca_not_scaled$x, pch=19, col= meta_data$experiment);
+legend("topright",                            
+       legend = levels(meta_data$experiment), 
+       col = 1:length(levels(meta_data$experiment)), 
+       pch = 19,
+       title = "Wine Type")
+```
+
+#### Autoplot
+
+```{r, cache=TRUE}
+ggplot2::autoplot(pca_not_scaled, data=meta_data, colour="experiment") + theme_classic() + labs(colour='Wine Type')
+```
+
+#### factoextra
+
+```{r, cache=TRUE}
+factoextra::fviz_pca_ind(pca_not_scaled, geom.ind = "point",
+                         col.ind = meta_data$experiment, addEllipses = TRUE)
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Create a data frame for ggplot
+pca_df <- as.data.frame(pca_not_scaled$x)
+pca_df$experiment <- as.factor(meta_data$experiment)
+
+# Plot
+ggplot(pca_df, aes(x = PC1, y = PC2, color = experiment)) +
+  geom_point(size = 2) +
+  labs(title = "PCA Plot", color = "Wine Type") +
+  theme_minimal()
+```
+
+### Color according to Time {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(pca_not_scaled$x, pch=19, col= meta_data$time);
+legend("topright",                            
+       legend = levels(meta_data$time), 
+       col = 1:length(levels(meta_data$time)), 
+       pch = 19,
+       title = "Time")  
+```
+
+#### Autoplot
+
+```{r, cache=TRUE}
+ggplot2::autoplot(pca_not_scaled, data=meta_data, colour="time") + theme_classic() + labs(colour='Time')
+```
+
+#### factoextra
+
+```{r, cache=TRUE}
+factoextra::fviz_pca_ind(pca_not_scaled, geom.ind = "point",
+                         col.ind = meta_data$time, addEllipses = TRUE)
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Create a data frame for ggplot
+pca_df <- as.data.frame(pca_not_scaled$x)
+pca_df$time <- as.factor(meta_data$time)
+
+# Plot
+ggplot(pca_df, aes(x = PC1, y = PC2, color = time)) +
+  geom_point(size = 2) +
+  labs(title = "PCA Plot", color = "Time") +
+  theme_minimal()
+```
+
+### Color according to Replicate {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(pca_not_scaled$x, pch=19, col= meta_data$replicate);
+legend("topright",                            
+       legend = levels(meta_data$replicate), 
+       col = 1:length(levels(meta_data$replicate)), 
+       pch = 19,
+       title = "Replicate")    
+```
+
+#### Autoplot
+
+```{r, cache=TRUE}
+ggplot2::autoplot(pca_not_scaled, data=meta_data, colour="replicate") + theme_classic() + labs(colour='Replicate')
+```
+
+#### factoextra
+
+```{r, cache=TRUE}
+factoextra::fviz_pca_ind(pca_not_scaled, geom.ind = "point",
+                         col.ind = meta_data$replicate, addEllipses = TRUE)
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Create a data frame for ggplot
+pca_df <- as.data.frame(pca_not_scaled$x)
+pca_df$replicate <- as.factor(meta_data$replicate)
+
+# Plot
+ggplot(pca_df, aes(x = PC1, y = PC2, color = replicate)) +
+  geom_point(size = 2) +
+  labs(title = "PCA Plot", color = "Replicate") +
+  theme_minimal()
+```
+
+##  {-}
+
+PCA clearly separates samples of wine A from those of wine B, enabling distinct classification between the two groups.
+
+However, batch effects are evident among the replicates. These effects stem from differences in experimental conditions, such as temperature fluctuations or setup inconsistencies, rather than genuine biological variation. A noticeable pattern emerges across replicates 1 through 4, marked by substantial shifts in data distribution, which likely reflect these technical discrepancies.
+
+To reduce the impact of these batch effects, we will now apply data scaling as a corrective measure.
+
+## PCA - Scaled {.tabset}
+
+```{r, cache=TRUE}
+# Apply PCA projection without any data transformation
+pca_scaled = stats::prcomp(X, scale=TRUE, center=TRUE)
+
+# Treat data as factor
+meta_data$experiment <- as.factor(meta_data$experiment)
+meta_data$time <- as.factor(meta_data$time)
+meta_data$replicate <- as.factor(meta_data$replicate)
+```
+
+### Color according to Wine Type {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(pca_scaled$x, pch=19, col= meta_data$experiment);
+legend("topright",                            
+       legend = levels(meta_data$experiment), 
+       col = 1:length(levels(meta_data$experiment)), 
+       pch = 19,
+       title = "Wine Type")
+```
+
+#### Autoplot
+
+```{r, cache=TRUE}
+ggplot2::autoplot(pca_scaled, data=meta_data, colour="experiment") + theme_classic() + labs(colour='Wine Type')
+```
+
+#### factoextra
+
+```{r, cache=TRUE}
+factoextra::fviz_pca_ind(pca_scaled, geom.ind = "point",
+                         col.ind = meta_data$experiment, addEllipses = TRUE)
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Create a data frame for ggplot
+pca_df <- as.data.frame(pca_scaled$x)
+pca_df$experiment <- as.factor(meta_data$experiment)
+
+# Plot
+ggplot(pca_df, aes(x = PC1, y = PC2, color = experiment)) +
+  geom_point(size = 2) +
+  labs(title = "PCA Plot", color = "Wine Type") +
+  theme_minimal()
+```
+
+### Color according to Time {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(pca_scaled$x, pch=19, col= meta_data$time);
+legend("topright",                            
+       legend = levels(meta_data$time), 
+       col = 1:length(levels(meta_data$time)), 
+       pch = 19,
+       title = "Time")  
+```
+
+#### Autoplot
+
+```{r, cache=TRUE}
+ggplot2::autoplot(pca_scaled, data=meta_data, colour="time") + theme_classic() + labs(colour='Time')
+```
+
+#### factoextra
+
+```{r, cache=TRUE}
+factoextra::fviz_pca_ind(pca_scaled, geom.ind = "point",
+                         col.ind = meta_data$time, addEllipses = TRUE)
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Create a data frame for ggplot
+pca_df <- as.data.frame(pca_scaled$x)
+pca_df$time <- as.factor(meta_data$time)
+
+# Plot
+ggplot(pca_df, aes(x = PC1, y = PC2, color = time)) +
+  geom_point(size = 2) +
+  labs(title = "PCA Plot", color = "Time") +
+  theme_minimal()
+```
+
+### Color according to Replicate {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(pca_scaled$x, pch=19, col= meta_data$replicate);
+legend("topright",                            
+       legend = levels(meta_data$replicate), 
+       col = 1:length(levels(meta_data$replicate)), 
+       pch = 19,
+       title = "Replicate")    
+```
+
+#### Autoplot
+
+```{r, cache=TRUE}
+ggplot2::autoplot(pca_scaled, data=meta_data, colour="replicate") + theme_classic() + labs(colour='Replicate')
+```
+
+#### factoextra
+
+```{r, cache=TRUE}
+factoextra::fviz_pca_ind(pca_scaled, geom.ind = "point",
+                         col.ind = meta_data$replicate, addEllipses = TRUE)
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Create a data frame for ggplot
+pca_df <- as.data.frame(pca_scaled$x)
+pca_df$replicate <- as.factor(meta_data$replicate)
+
+# Plot
+ggplot(pca_df, aes(x = PC1, y = PC2, color = replicate)) +
+  geom_point(size = 2) +
+  labs(title = "PCA Plot", color = "Replicate") +
+  theme_minimal()
+```
+
+## Total expression {.tabset}
+
+```{r, cache=TRUE}
+count_df <- data.frame(row.names = rownames(X), total_exp=rowSums(X))
+meta_data_all <- merge(count_df, meta_data, by='row.names')
+meta_data_all$Row.names <- as.factor(meta_data_all$Row.names)
+```
+
+### Wine Type
+
+```{r, cache=TRUE}
+ggplot(data = meta_data_all, aes(x=Row.names, y=total_exp, fill=experiment)) + 
+         geom_bar(stat='identity') + 
+  theme_classic() + theme(
+    axis.text.x=element_blank(), 
+    axis.ticks.x=element_blank()) + 
+  labs(x = "Row names", y = "Total expression")
+```
+
+### Time
+
+```{r, cache=TRUE}
+ggplot(data = meta_data_all, aes(x=Row.names, y=total_exp, fill=time)) + 
+         geom_bar(stat='identity') + 
+  theme_classic() + theme(
+    axis.text.x=element_blank(), 
+    axis.ticks.x=element_blank()) + 
+  labs(x = "Row names", y = "Total expression")
+```
+
+### Replicate
+
+```{r, cache=TRUE}
+ggplot(data = meta_data_all, aes(x=Row.names, y=total_exp, fill=replicate)) + 
+         geom_bar(stat='identity') + 
+  theme_classic() + theme(
+    axis.text.x=element_blank(), 
+    axis.ticks.x=element_blank()) + 
+  labs(x = "Row names", y = "Total expression")
+```
+
+### Expression
+
+```{r, cache=TRUE}
+ggplot(data = meta_data_all, 
+       aes(x = Row.names, y = total_exp, fill = total_exp)) + 
+  geom_bar(stat = 'identity') + 
+  theme_classic() + 
+  # Standard: Green - Low; Red - High
+  scale_fill_gradient(low = "green", high = "red") +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank()) +
+  labs(x = "Row names", y = "Total expression")
+```
+
+##  {-}
+
+Despite scaling, the batch effect remains, suggesting that further normalization is required to correct for the underlying technical variation. To address this, we will proceed with an additional normalization step aimed at mitigating these batch-related discrepancies.
+
+::: {.code_box data-latex="" style="border: 2px solid #FF0000; color: #000000;"}
+**ALTERNATIVE CODE:** PCA plotting by total expression
+
+```{r, cache=TRUE}
+pca_df$total_exp <- rowSums(X)
+ggplot(pca_df, aes(x = PC1, y = PC2, color = total_exp, shape=replicate)) +
+  geom_point(size=2) +
+  labs(title = "PCA Plot by Total Expression", x = "PC1", y = "PC2") +
+  theme_minimal() +
+  scale_color_gradient(low = "green", high = "red", name = "Total Expression")
+```
+:::
+
+This plot confirms that the **batch effect is linked to differences in total expression** across samples. Replicates from Group 1 show the lowest expression levels, followed sequentially by Groups 2, 3, and 4. As a result, although our primary goal is to detect differences between wines A and B, the **batch effect introduces variation mainly among replicates**.
+
+To further investigate this, we will conduct a more detailed analysis to **accurately assess the strength of the correlation with total expression**:
+
+```{r, cache=TRUE}
+plot(rowSums(X), pca_scaled$x[, "PC1"])
+```
+
+```{r, cache=TRUE}
+pca_points <- dplyr::as_tibble(pca_scaled$x) %>% bind_cols(meta_data) %>%
+as.data.frame()
+
+pca_points$exprs = rowSums(X)
+pc1_mod = lm(PC1 ~ exprs, data = pca_points)
+summary(pc1_mod) 
+```
+
+Our results reveal a **strong positive correlation between total expression and the first principal component (PC1)**, indicating that much of the variation explained by PC1 is driven by overall expression levels, rather than true biological differences between experimental conditions (Wine A vs. Wine B). This implies that the **separation along PC1 is predominantly a result of batch effects**.
+
+This interpretation is reinforced by the **extremely small p-value** (\< 2e-16), which highlights the statistical strength of the correlation. The **positive slope** (5.212e-07) further supports this, confirming our hypothesis that **gene expression increases as PC1 increases**.
+
+## PCA - Normalized {.tabset}
+
+```{r, cache=TRUE}
+# Normalize total expression of the samples 
+data_normalized_by_total_expression = X/rowSums(X)
+
+# Changes made comparison 
+dim(X)
+dim(data_normalized_by_total_expression)
+
+# PCA normalized definition 
+pca_norm = prcomp(data_normalized_by_total_expression, scale=TRUE)
+```
+
+### Color according to Wine Type {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(pca_norm$x, pch=19, col= meta_data$experiment);
+legend("bottomleft",                            
+       legend = levels(meta_data$experiment), 
+       col = 1:length(levels(meta_data$experiment)), 
+       pch = 19,
+       title = "Wine Type")
+```
+
+#### Autoplot
+
+```{r, cache=TRUE}
+ggplot2::autoplot(pca_norm, data=meta_data, colour="experiment") + theme_classic() + labs(colour='Wine Type')
+```
+
+#### factoextra
+
+```{r, cache=TRUE}
+factoextra::fviz_pca_ind(pca_norm, geom.ind = "point",
+                         col.ind = meta_data$experiment, addEllipses = TRUE)
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Create a data frame for ggplot
+pca_df <- as.data.frame(pca_norm$x)
+pca_df$experiment <- as.factor(meta_data$experiment)
+
+# Plot
+ggplot(pca_df, aes(x = PC1, y = PC2, color = experiment)) +
+  geom_point(size = 2) +
+  labs(title = "PCA Plot", color = "Wine Type") +
+  theme_minimal()
+```
+
+### Color according to Time {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(pca_norm$x, pch=19, col= meta_data$time);
+legend("topright",                            
+       legend = levels(meta_data$time), 
+       col = 1:length(levels(meta_data$time)), 
+       pch = 19,
+       title = "Time")  
+```
+
+#### Autoplot
+
+```{r, cache=TRUE}
+ggplot2::autoplot(pca_norm, data=meta_data, colour="time") + theme_classic() + labs(colour='Time')
+```
+
+#### factoextra
+
+```{r, cache=TRUE}
+factoextra::fviz_pca_ind(pca_norm, geom.ind = "point",
+                         col.ind = meta_data$time, addEllipses = TRUE)
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Create a data frame for ggplot
+pca_df <- as.data.frame(pca_norm$x)
+pca_df$time <- as.factor(meta_data$time)
+
+# Plot
+ggplot(pca_df, aes(x = PC1, y = PC2, color = time)) +
+  geom_point(size = 2) +
+  labs(title = "PCA Plot", color = "Time") +
+  theme_minimal()
+```
+
+### Color according to Replicate {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(pca_norm$x, pch=19, col= meta_data$replicate);
+legend("topright",                            
+       legend = levels(meta_data$replicate), 
+       col = 1:length(levels(meta_data$replicate)), 
+       pch = 19,
+       title = "Replicate")    
+```
+
+#### Autoplot
+
+```{r, cache=TRUE}
+ggplot2::autoplot(pca_norm, data=meta_data, colour="replicate") + theme_classic() + labs(colour='Replicate')
+```
+
+#### factoextra
+
+```{r, cache=TRUE}
+factoextra::fviz_pca_ind(pca_norm, geom.ind = "point",
+                         col.ind = meta_data$replicate, addEllipses = TRUE)
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Create a data frame for ggplot
+pca_df <- as.data.frame(pca_norm$x)
+pca_df$replicate <- as.factor(meta_data$replicate)
+
+# Plot
+ggplot(pca_df, aes(x = PC1, y = PC2, color = replicate)) +
+  geom_point(size = 2) +
+  labs(title = "PCA Plot", color = "Replicate") +
+  theme_minimal()
+```
+
+## Adress Outliers
+
+The plots suggest the presence of a potential outlier that falls outside the main clusters, possibly obscuring the clear separation between wine types A and B. This anomaly may be affecting the clarity of the visual representation. To address this, we can identify and remove the outlier. One approach to pinpoint it is by using `geom_text` to label individual data points for closer inspection.
+
+```{r, cache=TRUE}
+# Create PCA data frame and include sample labels
+pca_df <- as.data.frame(pca_norm$x)
+pca_df$experiment <- meta_data$experiment
+pca_df$sample_id <- rownames(pca_df)  # Use sample ID for labels
+
+# Plot with labels for closer inspection
+ggplot(pca_df, aes(x = PC1, y = PC2, color = experiment)) +
+  geom_point(size = 2) +
+  geom_text(aes(label = sample_id), hjust = 0.5, vjust = -0.7, size = 3, check_overlap = TRUE) +
+  labs(
+    title = "PCA Plot by Wine Type",
+    x = "PC1", y = "PC2",
+    color = "Wine Type"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+The outlier is "B.t1_rep3".
+
+```{r, cache=TRUE}
+X_clean <- X[rownames(X) != "B.t1_rep3", ]
+
+# Repeating the definition of meta_data with the new data 
+sample_ids <- row.names(X_clean)
+
+# Initialize vectors
+experiment <- character(length(sample_ids))
+time <- integer(length(sample_ids))
+replicate <- integer(length(sample_ids))
+
+# Split each name and assign to vectors
+for (i in seq_along(sample_ids)) {
+  parts <- unlist(strsplit(sample_ids[i], "[._]"))
+  experiment[i] <- parts[1]
+  time[i] <- as.integer(sub("t", "", parts[2]))
+  replicate[i] <- as.integer(sub("rep", "", parts[3]))
+}
+
+meta_data_clean <- data.frame(sample_ids, experiment, time, replicate)
+
+meta_data_clean$experiment <- as.factor(meta_data_clean$experiment)
+meta_data_clean$time <- as.factor(meta_data_clean$time)
+meta_data_clean$replicate <- as.factor(meta_data_clean$replicate)
+
+data_normalized_by_total_expression = X_clean/rowSums(X_clean)
+
+pca_norm <-prcomp(data_normalized_by_total_expression, scale=TRUE)
+```
+
+## PCA - Normalized without Outliers {.tabset}
+
+### Color according to Wine Type {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(pca_norm$x, pch=19, col= meta_data_clean$experiment);
+legend("bottomleft",                            
+       legend = levels(meta_data_clean$experiment), 
+       col = 1:length(levels(meta_data_clean$experiment)), 
+       pch = 19,
+       title = "Wine Type")
+```
+
+#### Autoplot
+
+```{r, cache=TRUE}
+ggplot2::autoplot(pca_norm, data=meta_data_clean, colour="experiment") + theme_classic() + labs(colour='Wine Type')
+```
+
+#### factoextra
+
+```{r, cache=TRUE}
+factoextra::fviz_pca_ind(pca_norm, geom.ind = "point",
+                         col.ind = meta_data_clean$experiment, addEllipses = TRUE)
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Create a data frame for ggplot
+pca_df <- as.data.frame(pca_norm$x)
+pca_df$experiment <- as.factor(meta_data_clean$experiment)
+
+# Plot
+ggplot(pca_df, aes(x = PC1, y = PC2, color = experiment)) +
+  geom_point(size = 2) +
+  labs(title = "PCA Plot", color = "Wine Type") +
+  theme_minimal()
+```
+
+### Color according to Time {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(pca_norm$x, pch=19, col= meta_data_clean$time);
+legend("topright",                            
+       legend = levels(meta_data_clean$time), 
+       col = 1:length(levels(meta_data_clean$time)), 
+       pch = 19,
+       title = "Time")  
+```
+
+#### Autoplot
+
+```{r, cache=TRUE}
+ggplot2::autoplot(pca_norm, data=meta_data_clean, colour="time") + theme_classic() + labs(colour='Time')
+```
+
+#### factoextra
+
+```{r, cache=TRUE}
+factoextra::fviz_pca_ind(pca_norm, geom.ind = "point",
+                         col.ind = meta_data_clean$time, addEllipses = TRUE)
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Create a data frame for ggplot
+pca_df <- as.data.frame(pca_norm$x)
+pca_df$time <- as.factor(meta_data_clean$time)
+
+# Plot
+ggplot(pca_df, aes(x = PC1, y = PC2, color = time)) +
+  geom_point(size = 2) +
+  labs(title = "PCA Plot", color = "Time") +
+  theme_minimal()
+```
+
+### Color according to Replicate {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(pca_norm$x, pch=19, col= meta_data_clean$replicate);
+legend("topright",                            
+       legend = levels(meta_data_clean$replicate), 
+       col = 1:length(levels(meta_data_clean$replicate)), 
+       pch = 19,
+       title = "Replicate")    
+```
+
+#### Autoplot
+
+```{r, cache=TRUE}
+ggplot2::autoplot(pca_norm, data=meta_data_clean, colour="replicate") + theme_classic() + labs(colour='Replicate')
+```
+
+#### factoextra
+
+```{r, cache=TRUE}
+factoextra::fviz_pca_ind(pca_norm, geom.ind = "point",
+                         col.ind = meta_data_clean$replicate, addEllipses = TRUE)
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Create a data frame for ggplot
+pca_df <- as.data.frame(pca_norm$x)
+pca_df$replicate <- as.factor(meta_data_clean$replicate)
+
+# Plot
+ggplot(pca_df, aes(x = PC1, y = PC2, color = replicate)) +
+  geom_point(size = 2) +
+  labs(title = "PCA Plot", color = "Replicate") +
+  theme_minimal()
+```
+
+##  {-}
+
+After normalizing the data and removing the outlier, the separation between sample groups becomes much more apparent—particularly in the PCA visualization generated using the factoextra package. The revised plot shows a clear distinction between the two wine types, A and B, which are now well separated along the first principal component (Dim1). This suggests that wine type is the main driver of variance along Dim1, pointing to potential genetic differences between the yeast strains used in the two sherry wine products.
+
+Interestingly, we also observe that time is associated with variation along Dim2, as samples from different time points form distinct subclusters within each wine group. This implies that gene expression patterns change significantly over the course of velum development, and that these changes are consistent within each strain.
+
+These results support the hypothesis that both wine type (strain identity) and fermentation stage (time) contribute to the observed differences in gene expression, offering insight into how yeast genetics and biological processes may influence the final characteristics of each sherry wine.
+
+Next, we will generate a plot where wine type is represented by shape and time is indicated by color. This visual approach allows us to clearly project the key findings: the separation of wine types along Dim1 and the temporal progression along Dim2.
+
+We will exclude replicates from the visualization, as they do not show any meaningful correlation with either Dim1 or Dim2. In fact, replicate variation was a source of batch effect in earlier analyses, which has since been addressed and removed through normalization and outlier filtering.
+
+```{r, cache=TRUE}
+# Calculate PCA (assuming you have pca_norm already from prcomp or similar)
+# autoplot draws from PCA object + metadata
+
+final_pca_plot_1 <- ggplot2::autoplot(
+  pca_norm,
+  data = meta_data_clean,
+  colour = "time",
+  shape = "experiment"
+) +
+  theme_minimal()+
+  labs(
+    shape="Wine Type",
+    colour="Time",
+    title = "PCA Plot with Time coloured",
+    x = paste0("PC1 (", round(summary(pca_norm)$importance[2, 1] * 100, 1), "% variance)"),
+    y = paste0("PC2 (", round(summary(pca_norm)$importance[2, 2] * 100, 1), "% variance)")
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "right"
+  )
+
+final_pca_plot_1
+
+```
+
+```{r, cache=TRUE}
+# Plot Total Expression and label Time
+pca_df <- as.data.frame(pca_norm$x)
+pca_df$experiment <- as.factor(meta_data_clean$experiment)
+pca_df$time <- as.factor(meta_data_clean$time)
+pca_df$total_exp <- rowSums(X_clean)
+final_pca_plot_2 <- ggplot(pca_df, aes(x = PC1, y = PC2, color = total_exp, shape=experiment)) +
+  geom_point(size=2) +
+  geom_text(aes(label = time), vjust = -1, size = 3, check_overlap = TRUE) +
+  scale_color_gradient(low = "green", high = "red", name = "Total Expression") +
+  scale_shape_manual(values = c(3, 17)) +
+  labs(title = "PCA Plot by Total Expression with Time Labels", x = "PC1", y = "PC2") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))+
+  labs(shape='Wine Type')
+
+final_pca_plot_2
+```
+
+
+
+# tSNE representation
+
+::: {.code_box data-latex=""}
+**t-distributed Stochastic Neighbor Embedding (t-SNE)** is a **dimensionality reduction technique** widely used for visualizing high-dimensional data. In contrast to linear methods like Principal Component Analysis (PCA), t-SNE is particularly effective at **capturing local**, **non-linear relationships** within complex datasets, often revealing gradual structural transitions. While it can display apparent clusters, t-SNE is not a true clustering algorithm but rather a tool for **visualizing neighborhood structure**. Its interpretability is limited, however, as the outcome can vary depending on parameters such as perplexity and learning rate. Despite these challenges, t-SNE remains a powerful method for exploring intricate data patterns, especially when complemented by PCA.
+:::
+
+
+## tSNE - Raw data {.tabset}
+
+```{r, cache=TRUE}
+X <- rbind(X1,X2,X3,X4)
+# Rtsne default parameters on raw data
+tsne_raw = Rtsne(X, perplexity = 7)
+
+# Treat data as factor
+tsne_data <- as.data.frame(tsne_raw$Y)
+tsne_data$experiment <- as.factor(meta_data$experiment)
+tsne_data$time <- as.factor(meta_data$time)
+tsne_data$replicate <- as.factor(meta_data$replicate)
+```
+
+### Color according to Wine Type {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(tsne_raw$Y, pch=19, col= meta_data$experiment, xlab = 'tSNE1', ylab = "tSNE2")
+legend("topleft",                            
+       legend = levels(meta_data$experiment), 
+       col = 1:length(levels(meta_data$experiment)), 
+       pch = 19,
+       title = "Wine Type")
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Prepare a data frame for ggplot
+tsne_df <- data.frame(
+  tSNE1 = tsne_raw$Y[, 1],
+  tSNE2 = tsne_raw$Y[, 2],
+  WineType = as.factor(meta_data$experiment)
+)
+
+# Create the plot
+ggplot(tsne_df, aes(x = tSNE1, y = tSNE2, color = WineType)) +
+  geom_point(size = 2) +
+  labs(
+    title = "t-SNE Plot by Wine Type",
+    x = "t-SNE 1",
+    y = "t-SNE 2",
+    color = "Wine Type"
+  ) +
+  theme_minimal()
+```
+
+### Color according to Time {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(tsne_raw$Y, pch=19, col= meta_data$time, xlab = 'tSNE1', ylab = "tSNE2")
+legend("topleft",                            
+       legend = levels(meta_data$experiment), 
+       col = 1:length(levels(meta_data$experiment)), 
+       pch = 19,
+       title = "Time")
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Prepare a data frame for ggplot
+tsne_df <- data.frame(
+  tSNE1 = tsne_raw$Y[, 1],
+  tSNE2 = tsne_raw$Y[, 2],
+  Time = as.factor(meta_data$time)
+)
+
+# Create the plot
+ggplot(tsne_df, aes(x = tSNE1, y = tSNE2, color = Time)) +
+  geom_point(size = 2) +
+  labs(
+    title = "t-SNE Plot by Time",
+    x = "t-SNE 1",
+    y = "t-SNE 2",
+    color = "Time"
+  ) +
+  theme_minimal()
+```
+
+### Color according to Replicate {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(tsne_raw$Y, pch=19, col= meta_data$replicate, xlab = 'tSNE1', ylab = "tSNE2")
+legend("topleft",                            
+       legend = levels(meta_data$experiment), 
+       col = 1:length(levels(meta_data$experiment)), 
+       pch = 19,
+       title = "Replicate")
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Prepare a data frame for ggplot
+tsne_df <- data.frame(
+  tSNE1 = tsne_raw$Y[, 1],
+  tSNE2 = tsne_raw$Y[, 2],
+  Replicate = as.factor(meta_data$replicate)
+)
+
+# Create the plot
+ggplot(tsne_df, aes(x = tSNE1, y = tSNE2, color = Replicate)) +
+  geom_point(size = 2) +
+  labs(
+    title = "t-SNE Plot by Replicate",
+    x = "t-SNE 1",
+    y = "t-SNE 2",
+    color = "Replicate"
+  ) +
+  theme_minimal()
+```
+
+## {-}
+
+These plots reveal a clear batch effect in the data. When we visualize the t-SNE results by replicate, the clustering primarily reflects replicate identity, samples from the same replicate group together, rather than differences in time or wine type, which are the variables of real interest. This indicates that technical variation is overshadowing the biological signal, and highlights the need to normalize the data to correct for this batch effect.
+
+## tSNE Normalized data {.tabset}
+
+```{r, cache=TRUE}
+X_norm = X/rowSums(X)
+set.seed(23)
+tsne_norm <- Rtsne(X_norm, perplexity = 7)
+```
+
+
+### Color according to Wine Type {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(tsne_norm$Y, pch=19, col= meta_data$experiment, xlab = 'tSNE1', ylab = "tSNE2")
+legend("topleft",                            
+       legend = levels(meta_data$experiment), 
+       col = 1:length(levels(meta_data$experiment)), 
+       pch = 19,
+       title = "Wine Type")
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Prepare a data frame for ggplot
+tsne_df <- data.frame(
+  tSNE1 = tsne_norm$Y[, 1],
+  tSNE2 = tsne_norm$Y[, 2],
+  WineType = as.factor(meta_data$experiment)
+)
+
+# Create the plot
+ggplot(tsne_df, aes(x = tSNE1, y = tSNE2, color = WineType)) +
+  geom_point(size = 2) +
+  labs(
+    title = "t-SNE Plot by Wine Type",
+    x = "t-SNE 1",
+    y = "t-SNE 2",
+    color = "Wine Type"
+  ) +
+  theme_minimal()
+```
+
+### Color according to Time {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(tsne_norm$Y, pch=19, col= meta_data$time, xlab = 'tSNE1', ylab = "tSNE2")
+legend("topleft",                            
+       legend = levels(meta_data$experiment), 
+       col = 1:length(levels(meta_data$experiment)), 
+       pch = 19,
+       title = "Time")
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Prepare a data frame for ggplot
+tsne_df <- data.frame(
+  tSNE1 = tsne_norm$Y[, 1],
+  tSNE2 = tsne_norm$Y[, 2],
+  Time = as.factor(meta_data$time)
+)
+
+# Create the plot
+ggplot(tsne_df, aes(x = tSNE1, y = tSNE2, color = Time)) +
+  geom_point(size = 2) +
+  labs(
+    title = "t-SNE Plot by Time",
+    x = "t-SNE 1",
+    y = "t-SNE 2",
+    color = "Time"
+  ) +
+  theme_minimal()
+```
+
+### Color according to Replicate {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+plot(tsne_norm$Y, pch=19, col= meta_data$replicate, xlab = 'tSNE1', ylab = "tSNE2")
+legend("topleft",                            
+       legend = levels(meta_data$experiment), 
+       col = 1:length(levels(meta_data$experiment)), 
+       pch = 19,
+       title = "Replicate")
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+# Prepare a data frame for ggplot
+tsne_df <- data.frame(
+  tSNE1 = tsne_norm$Y[, 1],
+  tSNE2 = tsne_norm$Y[, 2],
+  Replicate = as.factor(meta_data$replicate)
+)
+
+# Create the plot
+ggplot(tsne_df, aes(x = tSNE1, y = tSNE2, color = Replicate)) +
+  geom_point(size = 2) +
+  labs(
+    title = "t-SNE Plot by Replicate",
+    x = "t-SNE 1",
+    y = "t-SNE 2",
+    color = "Replicate"
+  ) +
+  theme_minimal()
+```
+
+## {-}
+
+After applying normalization to correct for batch effects, the t-SNE plots reveal a significant improvement in the structure of the data. Samples no longer group by replicate, which had previously obscured the underlying biological patterns. Instead, we observe clearly defined and well-separated clusters that correspond to the different wine types. This indicates that the batch effect has been effectively mitigated, allowing the true biological variation, specifically, differences related to wine type to emerge.
+
+As with the PCA results, a distinct outlier is still present in the t-SNE visualization. To enhance interpretability, this outlier should be removed.
+
+Additionally, similar to what was observed with PCA, the t-SNE plot shows a clear importance in time and wine type. This relationship becomes even clearer when using the cleaned datasets. By excluding the outlier and disregarding the replicate variable, which no longer shows any meaningful structure, we can effectively visualize both time and wine type on the same t-SNE plot for a more informative representation of the data.
+
+```{r, cache=TRUE}
+set.seed(23)
+X_clean <- X[rownames(X) != "B.t1_rep3", ]# Remove outlier identified in PCA
+
+# Repeating the definition of meta_data with the new data 
+ID <- row.names(X_clean)
+
+# Initialize vectors
+experiment_vector <- character(length(ID))
+time_vector <- integer(length(ID))
+replicate_vector <- integer(length(ID))
+
+# Split each name and assign to vectors
+for (i in seq_along(ID)) {
+  parts <- unlist(strsplit(ID[i], "[._]"))
+  experiment_vector[i] <- parts[1]
+  time_vector[i] <- as.integer(sub("t", "", parts[2]))
+  replicate_vector[i] <- as.integer(sub("rep", "", parts[3]))
+}
+
+meta_data_clean <- data.frame(ID, experiment_vector,time_vector,replicate_vector )
+
+X_norm = X_clean/rowSums(X_clean)
+tsne_clean <- Rtsne(X_norm, perplexity = 7)
+
+tsne_df <- data.frame(
+  tSNE1 = tsne_clean$Y[, 1],
+  tSNE2 = tsne_clean$Y[, 2],
+  experiment = meta_data_clean$experiment_vector,
+  time = meta_data_clean$time_vector,
+  replicate = meta_data_clean$replicate_vector,
+  total_expression = rowSums(X_clean)
+)
+
+final_tsne_plot_1 <- ggplot(tsne_df, aes(x = tSNE1, y = tSNE2, color = as.factor(time), shape = experiment)) +
+  geom_point(size = 2) +
+  ggtitle("t-SNE Plot with Time coloured") +
+  xlab("t-SNE 1") + ylab("t-SNE 2") +
+  labs(color = "Time", shape= "Wine Type") +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5, face="bold"))
+
+final_tsne_plot_2 <- ggplot(tsne_df, aes(x = tSNE1, y = tSNE2, color = total_expression, shape = experiment)) +
+  geom_point(size = 2) +
+  geom_text(aes(label = time), vjust = -1, size = 3, check_overlap = TRUE) +
+  scale_color_gradient(low = "green", high = "red") +
+  scale_shape_manual(values = c(3, 17)) +
+  ggtitle("t-SNE Plot by Total Expression with Time Labels") +
+  xlab("t-SNE 1") + ylab("t-SNE 2") +
+  labs(color = "Total Expression", shape="Wine Type") +
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(hjust = 0.5, face="bold"))
+
+
+final_tsne_plot_1
+final_tsne_plot_2
+```
+
+When applied to raw data, t-SNE primarily groups samples by replicate rather than by biological condition, highlighting the presence of batch effects. Normalization mitigates this issue, allowing the algorithm to focus on biologically meaningful variation. After normalization and outlier removal, t-SNE clearly separates wine types A and B, and reveals a temporal progression within each cluster. These patterns are consistent with those observed in PCA, but t-SNE provides a more detailed view of intra-cluster transitions, emphasizing the continuous and dynamic nature of gene expression changes during velum development.
+
+## Testing Perplexity {.tabset}
+
+Before running t-SNE, it's important to choose valid perplexity values. The t-SNE algorithm requires that:
+
+$3× perplexity < number of  samples − 1$
+
+Given our dataset has `n = 47` samples, the maximum acceptable perplexity is approximately 15. Based on this, we chose to test the effect of different perplexity values on the embedding by trying:\
+
+**perplexity = 1, 5, 10, and 15**
+
+```{r, cache=TRUE}
+set.seed(23)
+
+plot_tsne <- function(X_norm, meta_data_clean, max_iter = 30, perplexity) {
+  set.seed(23)  # Always same starting points
+  tsne_obj <- Rtsne(X_norm, max_iter = max_iter, perplexity = perplexity)
+  
+  tsne_df <- data.frame(
+    tSNE1 = tsne_obj$Y[, 1],
+    tSNE2 = tsne_obj$Y[, 2],
+    experiment = meta_data_clean$experiment_vector,
+    time = meta_data_clean$time_vector,
+    replicate = meta_data_clean$replicate_vector,
+    total_expression = rowSums(X_clean)
+  )
+  
+  ggplot(tsne_df, aes(x = tSNE1, y = tSNE2, color = experiment)) +
+    geom_point() +
+    theme_classic() +
+    labs(
+      title = paste("t-SNE Plot (Perplexity =", perplexity, ", Max_iter =", max_iter, ")"),
+      x = "tSNE 1", y = "tSNE 2"
+    ) +
+    theme(legend.position = "right")
+}
+
+
+```
+
+### Perplexity 1
+
+```{r, cache=TRUE}
+plot_tsne(X_norm, meta_data_clean, max_iter = 1000, perplexity = 1)
+```
+
+### Perplexity 5
+
+```{r, cache=TRUE}
+plot_tsne(X_norm, meta_data_clean, max_iter = 1000, perplexity = 5)
+```
+
+### Perplexity 10
+
+```{r, cache=TRUE}
+plot_tsne(X_norm, meta_data_clean, max_iter = 1000, perplexity = 10)
+```
+
+### Perplexity 15
+
+```{r, cache=TRUE}
+plot_tsne(X_norm, meta_data_clean, max_iter = 1000, perplexity = 15)
+```
+
+## {-}
+
+When using a very low perplexity value (e.g., 1), t-SNE emphasizes highly local relationships between points. This often leads to noisy or fragmented plots, where meaningful groupings are difficult to discern. As the perplexity increases to a moderate level (e.g., 5), the structure becomes clearer, and distinct cluster-like groupings start to emerge, although some overlap may still be present. However, at higher perplexity values (e.g., 10 or 15), the clusters tend to compress too closely together, making them indistinguishable and difficult to interpret. Based on these observations, we can select a perplexity value between 5 and 10 (e.g. 7) for our t-SNE visualization, as it offers a good balance between local detail and global structure, enabling clearer visual interpretation of the data.
+
+```{r, cache=TRUE}
+plot_tsne(X_norm, meta_data_clean, max_iter = 1000, perplexity = 7)
+```
+
+## Testing iterations {.tabset}
+
+Beyond perplexity, the number of iterations is another critical parameter in t-SNE. It controls how long the algorithm is allowed to optimize the positioning of data points in the low-dimensional space. Too few iterations may result in incomplete convergence, while a higher number of iterations helps the algorithm better capture the underlying structure of the data.
+
+### 1 Iteration
+
+```{r, cache=TRUE}
+plot_tsne(X_norm, meta_data_clean, max_iter = 1, perplexity = 7)
+```
+
+### 10 Iteration
+
+```{r, cache=TRUE}
+plot_tsne(X_norm, meta_data_clean, max_iter = 10, perplexity = 7)
+```
+
+### 100 Iteration
+
+```{r, cache=TRUE}
+plot_tsne(X_norm, meta_data_clean, max_iter = 100, perplexity = 7)
+```
+
+### 1000 Iteration
+
+```{r, cache=TRUE}
+plot_tsne(X_norm, meta_data_clean, max_iter = 1000, perplexity = 7)
+```
+
+##{-}
+
+With a very low number of iterations (e.g., 1, 10, or even 100), the optimization process is prematurely halted, resulting in scattered plots with little or no visible structure. The algorithm simply doesn’t have enough time to form meaningful clusters.
+
+However, when using a sufficient number of iterations (typically 1000), t-SNE is able to converge effectively. This leads to clear, well-separated groupings that better reflect the true relationships in the data.
+
+It's worth noting that 1000 is the default number of iterations in the Rtsne package, so there's usually no need to specify it unless we're testing lower or higher values deliberately.
+
+# UMAP representation 
+
+::: {.code_box data-latex=""}
+**Uniform Manifold Approximation and Projection (UMAP)** is a **technique for reducing dimensionality** that stands out for its efficiency and ability to scale with high-dimensional datasets. Similar to t-SNE, UMAP is effective at capturing **local, non-linear patterns** in data, but it also does a better job at maintaining the **broader structure**, making it well-suited for both data visualization and further analytical tasks. Although it can be influenced by parameters like the number of neighbors and minimum distance, UMAP typically delivers more reliable and robust results. Its **versatility** and **ease of interpretation** have contributed to its widespread adoption, frequently serving as an alternative or complement to t-SNE when exploring large and complex data.
+:::
+
+## UMAP - Raw data {.tabset}
+
+```{r}
+set.seed(23)
+
+X <- rbind(X1, X2, X3, X4)
+
+# Assign default parameters for raw UMAP
+umap_raw <- umap(X)
+```
+
+```{r, cache=TRUE}
+base_plot_representation <- function(x_given, y_given, meta_data, title, legend_title) {
+  # Create the base plot with the specified x and y data
+  plot(x_given, y_given, col = meta_data, pch = 19, 
+       xlab = "x", ylab = "y", main = title)
+  
+  # Add a legend with a dynamic title
+  if (is.factor(meta_data) || is.character(meta_data)) {
+    legend("topright", 
+           legend = levels(as.factor(meta_data)), 
+           col = unique(meta_data), 
+           pch = 19, 
+           title = legend_title)
+  }
+}
+```
+
+```{r, cache=TRUE}
+gg_plot_representation <- function(x_given, y_given, meta_data, title, legend_title) {
+  data_plot <- data.frame(x = x_given, 
+                          y = y_given, 
+                          col = meta_data)
+  
+  p <- ggplot(data_plot, aes(x = x, y = y, color = col)) +
+    geom_point() +
+    theme_minimal() +
+    labs(title = title, x = "UMAP1", y = "UMAP2", color = legend_title)
+  
+  return(p)
+}
+
+```
+
+### Color according to Wine Type {.tabset}
+
+#### Base plot 
+
+```{r, cache=TRUE}
+base_plot_representation(umap_raw$layout[,1],
+                         umap_raw$layout[,2],
+                         as.factor(meta_data$experiment),
+                         "Raw UMAP by Wine type",
+                         "Wine Type")  
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+gg_plot_representation(umap_raw$layout[,1],
+                       umap_raw$layout[,2],
+                       as.factor(meta_data$experiment),
+                       "Raw UMAP by Wine Type",
+                       "Wine Type")  
+```
+
+### Color according to Time {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+base_plot_representation(umap_raw$layout[,1],
+                         umap_raw$layout[,2],
+                         as.factor(meta_data$time),
+                         "Raw UMAP by Time",
+                         "Time") 
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+gg_plot_representation(umap_raw$layout[,1],
+                       umap_raw$layout[,2],
+                       as.factor(meta_data$time),
+                       "Raw UMAP by Time",
+                       "Time") 
+```
+
+### Color according to Replicate {.tabset}
+
+#### Replicate
+
+```{r, cache=TRUE}
+base_plot_representation(umap_raw$layout[,1],
+                         umap_raw$layout[,2],
+                         as.factor(meta_data$replicate),
+                         "Raw UMAP by Replicate",
+                         "Replicate") 
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+gg_plot_representation(umap_raw$layout[,1],
+                       umap_raw$layout[,2],
+                       as.factor(meta_data$replicate),
+                       "Raw UMAP by Replicate",
+                       "Replicate") 
+```
+
+
+## {-}
+
+Using UMAP, we obtain **comparable outcomes on the raw data to those produced by other methods**. The samples tend to cluster according to their replicates, suggesting the presence of a **batch effect**. To address this, we will normalize the data and reapply UMAP.
+
+## UMAP - Normalized {.tabset}
+
+```{r, cache=TRUE}
+set.seed(23)
+X_norm = X/rowSums(X)
+umap_norm <- umap(X_norm)
+```
+
+### Color according to Wine Type {.tabset}
+
+#### Base plot 
+
+```{r, cache=TRUE}
+base_plot_representation(umap_norm$layout[,1],
+                         umap_norm$layout[,2],
+                         as.factor(meta_data$experiment),
+                         "Normalized UMAP by Wine type",
+                         "Wine Type")
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+gg_plot_representation(umap_norm$layout[,1],
+                       umap_norm$layout[,2],
+                       as.factor(meta_data$experiment),
+                       "Normalized UMAP by Wine Type",
+                       "Wine Type")
+```
+
+### Color according to Time {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+base_plot_representation(umap_norm$layout[,1],
+                         umap_norm$layout[,2],
+                         as.factor(meta_data$time),
+                         "Normalized UMAP by Time",
+                         "Time")
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+gg_plot_representation(umap_norm$layout[,1],
+                       umap_norm$layout[,2],
+                       as.factor(meta_data$time),
+                       "Normalized UMAP by Time",
+                       "Time")
+```
+
+### Color according to Replicate {.tabset}
+
+#### Replicate
+
+```{r, cache=TRUE}
+base_plot_representation(umap_norm$layout[,1],
+                         umap_norm$layout[,2],
+                         as.factor(meta_data$replicate),
+                         "Normalized UMAP by Replicate",
+                         "Replicate")
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+gg_plot_representation(umap_norm$layout[,1],
+                       umap_norm$layout[,2],
+                       as.factor(meta_data$replicate),
+                       "Normalized UMAP by Replicate",
+                       "Replicate")
+```
+
+
+## {-}
+
+As observed previously, data normalization allows us to **distinguish two clusters corresponding to the yeast type (experiment)**. The **batch effect has been effectively removed**, as the clusters now consist of a mix of replicates. Moreover, we can **detect an outlier**, a single sample grouped with those from the opposite experiment. We will now remove this outlier and rerun UMAP to assess the changes.
+
+## UMAP - Normalized without the outlier {.tabset}
+
+```{r, cache=TRUE}
+# Remove outlier identified in PCA
+X_clean <- X[rownames(X) != "B.t1_rep3", ]
+
+# Repeating the definition of meta_data with the new data 
+sample_ids <- row.names(X_clean)
+
+# Initialize vectors
+experiment <- character(length(sample_ids))
+time <- integer(length(sample_ids))
+replicate <- integer(length(sample_ids))
+
+# Split each name and assign to vectors
+for (i in seq_along(sample_ids)) {
+  parts <- unlist(strsplit(sample_ids[i], "[._]"))
+  experiment[i] <- parts[1]
+  time[i] <- as.integer(sub("t", "", parts[2]))
+  replicate[i] <- as.integer(sub("rep", "", parts[3]))
+}
+
+meta_data_clean <- data.frame(sample_ids, experiment, time, replicate)
+```
+
+```{r, cache=TRUE}
+X_norm = X_clean/rowSums(X_clean)
+set.seed(23)
+
+umap_norm <- umap(X_norm);
+```
+
+### Color according to Wine Type {.tabset}
+
+#### Base plot 
+
+```{r, cache=TRUE}
+base_plot_representation(umap_norm$layout[,1],
+                         umap_norm$layout[,2],
+                         as.factor(meta_data_clean$experiment),
+                         "Normalized UMAP, without the outlier, by Wine type",
+                         "Wine Type")
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+gg_plot_representation(umap_norm$layout[,1],
+                       umap_norm$layout[,2],
+                       as.factor(meta_data_clean$experiment),
+                       "Normalized UMAP, without the outlier, by Wine Type",
+                       "Wine Type")
+```
+
+### Color according to Time {.tabset}
+
+#### Base plot
+
+```{r, cache=TRUE}
+base_plot_representation(umap_norm$layout[,1],
+                         umap_norm$layout[,2],
+                         as.factor(meta_data_clean$time),
+                         "Normalized UMAP, without the outlier, by Time",
+                         "Time")
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+gg_plot_representation(umap_norm$layout[,1],
+                       umap_norm$layout[,2],
+                       as.factor(meta_data_clean$time),
+                       "Normalized UMAP, without the outlier, by Time",
+                       "Time")
+                      
+```
+
+### Color according to Replicate {.tabset}
+
+#### Replicate
+
+```{r, cache=TRUE}
+base_plot_representation(umap_norm$layout[,1],
+                         umap_norm$layout[,2],
+                         as.factor(meta_data_clean$replicate),
+                         "Normalized UMAP, without the outlier, by Replicate",
+                         "Replicate")
+```
+
+#### ggplot()
+
+```{r, cache=TRUE}
+gg_plot_representation(umap_norm$layout[,1],
+                       umap_norm$layout[,2],
+                       as.factor(meta_data_clean$replicate),
+                       "Normalized UMAP, without the outlier, by Replicate",
+                       "Replicate")
+```
+
+
+## {-}
+
+After data normalization and outlier removal, we find that the **overall results remain largely unchanged**. This mirrors what we observed with t-SNE. The two clusters, still corresponding to the experimental conditions, persist without signs of batch effect, and samples continue to group according to time. We can conclude that **UMAP shows robustness to outliers**, and that alternative approaches such as PCA may be more suitable for identifying them.
+
+```{r}
+gg_plot_representation_exp <- function(x_given, y_given, total_expression, meta_data, title) {
+  data_plot <- data.frame(
+    x = x_given,
+    y = y_given,
+    col = total_expression,
+    shape_group = meta_data
+  )
+  
+  p <- ggplot(data_plot, aes(x = x, y = y, color = col, shape = shape_group)) +
+    geom_point(size = 2) +
+    scale_color_gradient(low = "green", high = "red") +
+    labs(title = title, x = "UMAP1", y = "UMAP2", color = "Total Expression", shape="Wine Type") +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5, face="bold"))+
+    scale_shape_manual(values = c(3, 17))+
+    geom_text(aes(label = time), vjust = -1, size = 3, check_overlap = TRUE)
+  
+  return(p)
+}
+
+gg_plot_representation_time <- function(x_given, y_given, total_expression, meta_data, title) {
+  data_plot <- data.frame(
+    x = x_given,
+    y = y_given,
+    col = as.factor(time),
+    shape_group = meta_data
+  )
+  
+  p <- ggplot(data_plot, aes(x = x, y = y, color = col, shape = shape_group)) +
+    geom_point(size = 2) +
+    labs(title = title, x = "UMAP1", y = "UMAP2", color = "Time", shape="Wine Type") +
+    theme_minimal()+
+    theme(plot.title = element_text(hjust = 0.5, face="bold"))
+  
+  return(p)
+}
+
+final_umap_plot_1 <- gg_plot_representation_time(
+  umap_norm$layout[, 1],
+  umap_norm$layout[, 2],
+  meta_data_clean$time,  
+  meta_data_clean$experiment,
+  "UMAP Plot with Time coloured"
+)
+
+
+final_umap_plot_2 <- gg_plot_representation_exp(
+  umap_norm$layout[, 1],
+  umap_norm$layout[, 2],
+  rowSums(X_clean), 
+  as.factor(meta_data_clean$experiment),
+  "UMAP Plot by Total Expression with Time Labels"
+)
+
+final_umap_plot_1
+final_umap_plot_2
+```
+
+As with PCA and t-SNE, UMAP reveals two distinct clusters corresponding to wine types A and B, while also capturing clear time-based groupings within each cluster. Unlike the other methods, UMAP more effectively balances global structure and local continuity, maintaining the separation between wine types and the temporal progression of samples. This robustness across raw, normalized, and projected data underscores UMAP’s reliability for visualizing complex, biologically meaningful patterns.
+
+## Predict the data 
+
+Next, we will evaluate the **predictive power of UMAP** by training it on a subset of the data (three replicates) and then **predicting embeddings for a held-out test set** (the fourth replicate). We will also **compare the projections before and after normalization**, demonstrating how **normalization enhances the quality** of UMAP's output.
+
+### Raw data by Time {.tabset}
+
+```{r, cache=TRUE}
+# Subset training data (three replicates) and test data (fourth replicate)
+training_data <- X[meta_data$replicate != 4, ]
+test_data <- X[meta_data$replicate == 4, ]
+
+# New metadata 
+training_meta <- meta_data[meta_data$replicate != 4, ]
+test_meta <- meta_data[meta_data$replicate == 4, ]
+```
+
+#### Raw training data
+
+```{r, cache=TRUE}
+# Fit UMAP on the training data
+set.seed(23)
+training_umap <- umap(training_data)
+
+gg_plot_representation(
+  training_umap$layout[, 1],  
+  training_umap$layout[, 2],
+  as.factor(training_meta$time),  
+  "Raw UMAP training data by Time",
+  "Time"
+)
+```
+
+#### Raw testing data 
+
+```{r, cache=TRUE}
+# Predict UMAP results for the test data
+test_umap <- predict(training_umap, test_data)
+
+gg_plot_representation(
+  test_umap[, 1],  
+  test_umap[, 2],  
+  as.factor(test_meta$time),  
+  "Raw UMAP testing data by Time",
+  "Time"
+)
+```
+
+### Normalized data by Time {.tabset}
+
+```{r, cache=TRUE}
+# With normalization now: 
+training_data_norm <- training_data / rowSums(training_data)
+test_data_norm <- test_data / rowSums(test_data)
+
+set.seed(23)
+training_umap_norm <- umap(training_data_norm)
+
+test_umap_norm <- predict(training_umap_norm, test_data_norm)
+```
+
+#### Normalized training data 
+
+```{r, cache=TRUE}
+gg_plot_representation(
+  training_umap_norm$layout[, 1],
+  training_umap_norm$layout[, 2],
+  as.factor(training_meta$time),
+  "Normalized UMAP training data by Time",
+  "Time"
+)
+```
+
+#### Normalized testing data 
+
+```{r, cache=TRUE}
+gg_plot_representation(
+  test_umap_norm[, 1],
+  test_umap_norm[, 2],
+  as.factor(test_meta$time),
+  "Normalized UMAP testing data by Time",
+  "Time"
+)
+```
+
+### {-}
+
+To assess the ability of UMAP to generalize beyond the training data and to evaluate the effect of normalization, we projected held-out test samples into the UMAP space generated from the training set (three replicates per time point).
+
+When using raw (non-normalized) RNA-seq data, the test samples did not align well with the temporal structure observed in the training set. The projected test points appeared scattered and failed to follow the expected progression across fermentation stages. This suggests that the noise and variability present in unprocessed count data can significantly impair the reliability of low-dimensional embeddings.
+
+In contrast, when the same approach was applied to normalized data, the test samples integrated smoothly into the UMAP space and closely followed the temporal gradient established by the training replicates. The resulting plot showed strong concordance between training and test data, indicating that the temporal transcriptomic trajectory was reproducible across independent replicates.
+
+These results highlight two key findings:
+
+- UMAP effectively captures biologically meaningful temporal patterns in transcriptomic data, and
+
+- Normalization is essential for minimizing technical variation and enabling accurate projection of new samples into an existing low-dimensional space.
+
+This demonstrates that UMAP, when paired with appropriate preprocessing, can be used not only for exploratory visualization but also as a reliable framework for embedding and interpreting new, unseen transcriptomic data.
+
+## Explore parameters
+
+### Explore `n_neighbors` {.tabset}
+
+The n_neighbors parameter in UMAP determines the number of approximate nearest neighbors used to construct the initial high-dimensional graph. It balances local and global structure in the data visualization.
+
+```{r}
+set.seed(23)
+
+run_umap_and_plot <- function(X, n_neighbors, meta_data) {
+  umap_result <- umap(X, n_neighbors = n_neighbors)
+  
+  plot(
+    umap_result$layout[,1],
+    umap_result$layout[,2],
+    col = as.factor(meta_data_clean$experiment),
+    pch = 19,
+    main = paste0("UMAP: ", n_neighbors, " neighbours"),
+    xlab = "UMAP 1",
+    ylab = "UMAP 2"
+  )
+}
+
+
+```
+
+#### 2 n_neighbors
+
+```{r}
+run_umap_and_plot(X_norm, 2, meta_data)
+```
+
+#### 5 n_neighbors
+
+```{r}
+run_umap_and_plot(X_norm, 5, meta_data)
+```
+
+#### 15 n_neighbors
+
+```{r}
+run_umap_and_plot(X_norm, 15, meta_data)
+```
+
+#### 25 n_neighbors
+
+```{r}
+run_umap_and_plot(X_norm, 25, meta_data)
+```
+
+#### 45 n_neighbors
+
+```{r}
+run_umap_and_plot(X_norm, 45, meta_data)
+```
+
+### Explore `min_dist` {.tabset}
+
+The min_dist parameter in UMAP controls how tightly points are packed in the low-dimensional space. It affects the minimum distance between embedded points, thereby influencing the compactness of clusters and the preservation of local structure.
+
+```{r}
+set.seed(23)
+
+run_umap_and_plot <- function(X, min_dist, meta_data) {
+  umap_result <- umap(X, min_dist = min_dist)
+  
+  plot(
+    umap_result$layout[,1],
+    umap_result$layout[,2],
+    col = as.factor(meta_data_clean$experiment),
+    pch = 19,
+    main = paste0("UMAP: Minim distance ", min_dist),
+    xlab = "UMAP 1",
+    ylab = "UMAP 2"
+  )
+}
+
+
+```
+
+#### min_dist 0.1
+
+```{r}
+run_umap_and_plot(X_norm, 0.1, meta_data)
+```
+
+#### min_dist 0.5
+
+```{r}
+run_umap_and_plot(X_norm, 0.5, meta_data)
+```
+
+#### min_dist 0.9
+
+```{r}
+run_umap_and_plot(X_norm, 0.9, meta_data)
+```
+
+### Explore `metric` {.tabset}
+
+The metric parameter defines the distance function used to compute pairwise relationships between data points in the high-dimensional space. It plays a crucial role in shaping the structure of the UMAP embedding by determining how similarity is quantified during graph construction.
+
+```{r}
+set.seed(23)
+
+run_umap_and_plot <- function(X, metric, meta_data) {
+  umap_result <- umap(X, metric = metric)
+  
+  plot(
+    umap_result$layout[,1],
+    umap_result$layout[,2],
+    col = as.factor(meta_data_clean$experiment),
+    pch = 19,
+    main = paste0("UMAP: ", metric),
+    xlab = "UMAP 1",
+    ylab = "UMAP 2"
+  )
+}
+
+
+```
+
+#### euclidean
+
+```{r}
+run_umap_and_plot(X_norm, "euclidean", meta_data)
+```
+
+#### cosine
+
+```{r}
+run_umap_and_plot(X_norm, "cosine", meta_data)
+```
+
+#### manhattan
+
+```{r}
+run_umap_and_plot(X_norm, "manhattan", meta_data)
+```
+
+## {-}
+
+To optimize the performance and interpretability of our UMAP embeddings, we explored the impact of key parameters, including number of neighbors, minimum distance (min_dist), and the distance metric. While the UMAP implementation was initially run with default settings, systematic testing revealed that specific parameter choices improved the separation and biological coherence of the sample clusters.
+
+We found that setting the number of neighbors to 15 yielded the most meaningful separation between the two wine types. Lower values resulted in overly fragmented clusters, limiting interpretability, while higher values caused excessive overlap and dispersion, obscuring distinctions between groups.
+
+For the min_dist parameter, which controls the compactness of embedded points, we selected a value of 0.1. This setting provided a good balance between preserving local structure and maintaining overall cluster clarity. Higher values led to overly spread-out embeddings, reducing the visual and biological resolution of sample groupings.
+
+Regarding the distance metric, we compared Euclidean, Manhattan, and Cosine distances. Euclidean distance consistently produced the most coherent and biologically plausible clustering, accurately reflecting both wine type and temporal progression. Manhattan and Cosine metrics were less effective at capturing the underlying structure of the data, resulting in less distinct or less biologically meaningful groupings.
+
+These parameter optimizations ensured that the UMAP representation faithfully reflected the key biological dimensions in the transcriptomic data, enhancing the quality of downstream analyses and visualizations.
+
+# Final plots
+
+## Plots with Time coloured
+
+*Click on any image to open it full size in a new tab.*
+
+```{r, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+
+# Save plots to temporary files
+ggsave("pca_tmp.png", final_pca_plot_1, width = 6, height = 4, bg = "white")
+ggsave("tsne_tmp.png", final_tsne_plot_1, width = 6, height = 4, bg = "white")
+ggsave("umap_tmp.png", final_umap_plot_1, width = 6, height = 4, bg = "white")
+
+# Embed HTML with clickable thumbnails
+htmltools::browsable(
+  tagList(
+    tags$a(href = "pca_tmp.png", target = "_blank", 
+           tags$img(src = "pca_tmp.png", width = "30%", style="margin-right:10px")),
+    tags$a(href = "tsne_tmp.png", target = "_blank", 
+           tags$img(src = "tsne_tmp.png", width = "30%", style="margin-right:10px")),
+    tags$a(href = "umap_tmp.png", target = "_blank", 
+           tags$img(src = "umap_tmp.png", width = "30%"))
+  )
+)
+
+```
+
+## Plots by Total Expression with Time Labels
+
+*Click on any image to open it full size in a new tab.*
+
+```{r, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+
+# Save plots to temporary files
+ggsave("pca_2_tmp.png", final_pca_plot_2, width = 6, height = 4, bg = "white")
+ggsave("tsne_2_tmp.png", final_tsne_plot_2, width = 6, height = 4, bg = "white")
+ggsave("umap_2_tmp.png", final_umap_plot_2, width = 6, height = 4, bg = "white")
+
+# Embed HTML with clickable thumbnails
+htmltools::browsable(
+  tagList(
+    tags$a(href = "pca_2_tmp.png", target = "_blank", 
+           tags$img(src = "pca_2_tmp.png", width = "30%", style="margin-right:10px")),
+    tags$a(href = "tsne_2_tmp.png", target = "_blank", 
+           tags$img(src = "tsne_2_tmp.png", width = "30%", style="margin-right:10px")),
+    tags$a(href = "umap_2_tmp.png", target = "_blank", 
+           tags$img(src = "umap_2_tmp.png", width = "30%"))
+  )
+)
+
+```
+
+This study explored transcriptomic variation in industrial Saccharomyces cerevisiae flor yeast strains used in the production of two distinct types of sherry wines. We applied three unsupervised dimensionality reduction techniques, Principal Component Analysis (PCA), t-Distributed Stochastic Neighbor Embedding (t-SNE) and Uniform Manifold Approximation and Projection (UMAP), to visualize and interpret high-dimensional RNA-seq data collected across six stages of velum development. These approaches enabled us to uncover biological structure and potential relationships between yeast gene expression, wine type, and fermentation time.
+
+Our analysis revealed a clear and consistent transcriptional separation between yeast strains used in the production of wine types A and B, as shown across all methods. This robust clustering pattern strongly suggests underlying genetic or regulatory differences between the strains, which are likely responsible for the distinct sensory and physicochemical profiles observed in the final wines, including variations in flavor, color, and alcohol content.
+
+In addition to strain-specific patterns, time emerged as a critical factor in transcriptomic variation. Samples collected at different stages of velum development consistently formed distinct temporal clusters in all three dimensionality reduction techniques. This pattern reflects systematic changes in gene expression over time, likely driven by the yeast’s adaptive responses to the evolving conditions during sherry wine aging,such as increasing ethanol concentration, oxidative stress, and nutrient depletion. These temporal dynamics were especially well-resolved in t-SNE and UMAP, which arranged samples along trajectories representing biologically meaningful progressions. PCA also captured this temporal component, primarily along the second principal axis.
+
+A notable finding was the identification and impact of an outlier sample, which initially obscured biological structure in the data. PCA proved particularly effective in revealing the outlier’s influence, demonstrating its value for detecting dominant sources of variance. Removal of the outlier clarified both global and local sample relationships across all methods. t-SNE showed moderate improvement in cluster definition post-removal, while UMAP was the most robust, maintaining coherent groupings even with the outlier present, though further refined after its exclusion.
+
+In terms of methodological performance, PCA offered strong interpretability and was especially useful for identifying outliers and major variance components, though it was less sensitive to non-linear relationships. t-SNE excelled at capturing local structure, aiding in the visualization of finer-scale patterns such as temporal shifts, but was more affected by data normalization and initial noise. UMAP provided a strong balance, preserving both global and local relationships while demonstrating resilience to noise and outliers, making it particularly effective for exploratory analysis in complex biological datasets.
+
+In summary, our integrative approach combining multiple dimensionality reduction techniques with rigorous data processing revealed both strain-specific and temporally dynamic gene expression patterns in flor yeast during sherry wine production. These findings confirm that the yeast strains used for each wine type exhibit distinct transcriptional programs and that these programs evolve over the course of velum development in a consistent and biologically meaningful manner. This study advances our understanding of yeast behavior under oxidative aging conditions and underscores the value of transcriptomic profiling combined with multivariate analysis in deciphering the molecular underpinnings of fermentation-driven food production.
