@@ -6,7 +6,7 @@ This repository presents an RNA-seq data visualization project focused on two in
 
 Flor yeasts develop a velum on the surface of fortified wine and are essential in the biological aging process that defines the sensory profile of sherry wines. In this project, RNA-seq expression data from two flor yeast strains were analyzed across six stages of velum development, using four replicates per time point.
 
-The analysis applies dimensionality reduction and visualization methods to investigate the global structure of the data, evaluate clustering patterns, and identify potential outlier samples.
+The analysis applies dimensionality reduction and visualization methods to investigate the global structure of the data, evaluate clustering patterns, and identify potential outlier samples. 
 
 ## Objectives
 
